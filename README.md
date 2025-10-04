@@ -1,2 +1,1 @@
-# Team-one-API
-An e-commerce flask API
+#A clinical support system that diagnosis Guillain-Barre Syndrome subtypes with Machine learning predictions
