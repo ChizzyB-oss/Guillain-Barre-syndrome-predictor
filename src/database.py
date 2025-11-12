@@ -1,230 +1,125 @@
-import sqlite3
-import pandas as pd
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import Column, Integer, String, Boolean, Float, Text, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from datetime import datetime
 import hashlib
-import os
-import json
+import secrets
+from werkzeug.security import generate_password_hash, check_password_hash
 
-class DatabaseManager:
-    def __init__(self, db_path='data/gbs_system.db'):
-        self.db_path = db_path
-        self.init_database()
-    
-    def init_database(self):
-        """Initialize database with required tables"""
-        os.makedirs('data', exist_ok=True)
-        
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # Users table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                full_name TEXT NOT NULL,
-                role TEXT DEFAULT 'clinician',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_active BOOLEAN DEFAULT 1
-            )
-        ''')
-        
-        # Patient records table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS patients (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                patient_id TEXT UNIQUE NOT NULL,
-                age INTEGER,
-                gender TEXT,
-                created_by INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (created_by) REFERENCES users (id)
-            )
-        ''')
-        
-        # Predictions table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS predictions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                patient_id INTEGER,
-                user_id INTEGER,
-                input_data TEXT NOT NULL,
-                predicted_subtype TEXT NOT NULL,
-                confidence REAL NOT NULL,
-                all_probabilities TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES patients (id),
-                FOREIGN KEY (user_id) REFERENCES users (id)
-            )
-        ''')
-        
-        # Sessions table for authentication
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                session_token TEXT UNIQUE NOT NULL,
-                expires_at TIMESTAMP NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (id)
-            )
-        ''')
-        
-        conn.commit()
-        conn.close()
-        print("✅ Database initialized successfully")
-    
-    def hash_password(self, password):
-        """Hash password using SHA-256"""
-        return hashlib.sha256(password.encode()).hexdigest()
-    
-    def create_user(self, username, email, password, full_name, role='clinician'):
-        """Create a new user"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        try:
-            password_hash = self.hash_password(password)
-            cursor.execute('''
-                INSERT INTO users (username, email, password_hash, full_name, role)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (username, email, password_hash, full_name, role))
-            
-            conn.commit()
-            user_id = cursor.lastrowid
-            print(f"✅ User {username} created successfully")
-            return user_id
-        except sqlite3.IntegrityError:
-            print("❌ Username or email already exists")
-            return None
-        finally:
-            conn.close()
-    
-    def authenticate_user(self, username, password):
-        """Authenticate user and return user data"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        password_hash = self.hash_password(password)
-        cursor.execute('''
-            SELECT id, username, email, full_name, role FROM users 
-            WHERE username = ? AND password_hash = ? AND is_active = 1
-        ''', (username, password_hash))
-        
-        user = cursor.fetchone()
-        conn.close()
-        
-        if user:
-            return {
-                'id': user[0],
-                'username': user[1],
-                'email': user[2],
-                'full_name': user[3],
-                'role': user[4]
-            }
-        return None
-    
-    def create_session(self, user_id):
-        """Create a new user session"""
-        import secrets
-        from datetime import datetime, timedelta
-        
-        session_token = secrets.token_hex(32)
-        expires_at = datetime.now() + timedelta(hours=24)
-        
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            INSERT INTO user_sessions (user_id, session_token, expires_at)
-            VALUES (?, ?, ?)
-        ''', (user_id, session_token, expires_at))
-        
-        conn.commit()
-        conn.close()
-        
-        return session_token
-    
-    def validate_session(self, session_token):
-        """Validate session token and return user data"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT u.id, u.username, u.email, u.full_name, u.role 
-            FROM users u
-            JOIN user_sessions s ON u.id = s.user_id
-            WHERE s.session_token = ? AND s.expires_at > CURRENT_TIMESTAMP AND u.is_active = 1
-        ''', (session_token,))
-        
-        user = cursor.fetchone()
-        conn.close()
-        
-        if user:
-            return {
-                'id': user[0],
-                'username': user[1],
-                'email': user[2],
-                'full_name': user[3],
-                'role': user[4]
-            }
-        return None
-    
-    def save_prediction(self, user_id, input_data, prediction_result, patient_id=None):
-        """Save prediction to database"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute('''
-                INSERT INTO predictions (user_id, patient_id, input_data, predicted_subtype, confidence, all_probabilities)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (
-                user_id,
-                patient_id,
-                json.dumps(input_data),
-                prediction_result['predicted_subtype'],
-                prediction_result['confidence'],
-                json.dumps(prediction_result['all_probabilities'])
-            ))
-            
-            conn.commit()
-            prediction_id = cursor.lastrowid
-            return prediction_id
-        except Exception as e:
-            print(f"❌ Error saving prediction: {e}")
-            return None
-        finally:
-            conn.close()
-    
-    def get_user_predictions(self, user_id, limit=50):
-        """Get prediction history for a user"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT id, patient_id, input_data, predicted_subtype, confidence, created_at
-            FROM predictions 
-            WHERE user_id = ?
-            ORDER BY created_at DESC
-            LIMIT ?
-        ''', (user_id, limit))
-        
-        predictions = []
-        for row in cursor.fetchall():
-            predictions.append({
-                'id': row[0],
-                'patient_id': row[1],
-                'input_data': json.loads(row[2]),
-                'predicted_subtype': row[3],
-                'confidence': row[4],
-                'created_at': row[5]
-            })
-        
-        conn.close()
-        return predictions
+db = SQLAlchemy()
 
-# Initialize database
-db = DatabaseManager()
+class User(db.Model):
+    """User model for authentication and authorization"""
+    __tablename__ = 'users'
+    
+    id = Column(Integer, primary_key=True)
+    username = Column(String(80), unique=True, nullable=False, index=True)
+    email = Column(String(120), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    full_name = Column(String(100), nullable=False)
+    role = Column(String(20), default='clinician')  # clinician, researcher, admin
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    predictions = relationship('Prediction', backref='user', lazy='dynamic')
+    sessions = relationship('UserSession', backref='user', lazy='dynamic')
+    
+    def set_password(self, password):
+        """Set password hash"""
+        self.password_hash = generate_password_hash(password)
+    
+    def check_password(self, password):
+        """Check password hash"""
+        return check_password_hash(self.password_hash, password)
+    
+    def to_dict(self):
+        """Convert user object to dictionary"""
+        return {
+            'id': self.id,
+            'username': self.username,
+            'email': self.email,
+            'full_name': self.full_name,
+            'role': self.role,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+class UserSession(db.Model):
+    """User session model for authentication"""
+    __tablename__ = 'user_sessions'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    session_token = Column(String(64), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def is_valid(self):
+        """Check if session is still valid"""
+        return datetime.utcnow() < self.expires_at
+
+class Prediction(db.Model):
+    """Prediction model to store all GBS predictions"""
+    __tablename__ = 'predictions'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    prediction_id = Column(String(36), unique=True, nullable=False, index=True)  # UUID
+    input_data = Column(Text, nullable=False)  # JSON string of input features
+    predicted_subtype = Column(String(10), nullable=False)  # AIDP, AMAN, AMSAN, MF
+    confidence = Column(Float, nullable=False)
+    all_probabilities = Column(Text, nullable=False)  # JSON string
+    interpretation = Column(Text)  # Clinical interpretation
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    def to_dict(self):
+        """Convert prediction to dictionary"""
+        import json
+        return {
+            'id': self.id,
+            'prediction_id': self.prediction_id,
+            'user_id': self.user_id,
+            'predicted_subtype': self.predicted_subtype,
+            'confidence': self.confidence,
+            'all_probabilities': json.loads(self.all_probabilities),
+            'interpretation': json.loads(self.interpretation) if self.interpretation else None,
+            'input_data': json.loads(self.input_data),
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+class SystemLog(db.Model):
+    """System log for auditing and monitoring"""
+    __tablename__ = 'system_logs'
+    
+    id = Column(Integer, primary_key=True)
+    level = Column(String(20), nullable=False, index=True)  # INFO, WARNING, ERROR
+    module = Column(String(50), nullable=False)
+    message = Column(Text, nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    ip_address = Column(String(45))  # IPv6 compatible
+    user_agent = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+def init_db(app):
+    """Initialize database with app context"""
+    db.init_app(app)
+    
+    with app.app_context():
+        db.create_all()
+        print("✅ Database tables created successfully")
+        
+        # Create default admin user if doesn't exist
+        admin_user = User.query.filter_by(username='admin').first()
+        if not admin_user:
+            admin_user = User(
+                username='admin',
+                email='admin@gbssystem.com',
+                full_name='System Administrator',
+                role='admin'
+            )
+            admin_user.set_password('admin123')
+            db.session.add(admin_user)
+            db.session.commit()
+            print("✅ Default admin user created")
