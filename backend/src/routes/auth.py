@@ -1,4 +1,3 @@
-# backend/src/routes/auth.py
 from flask import Blueprint, request, jsonify
 from models.database import db, User, UserSession
 from utils.security import SecurityUtils, token_required
