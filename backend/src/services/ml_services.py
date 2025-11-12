@@ -2,7 +2,7 @@ import joblib
 import pandas as pd
 import numpy as np
 import json
-from flask import current_app
+import os
 from utils.logging import logger
 
 class MLService:
@@ -16,6 +16,17 @@ class MLService:
         self.feature_names = []
         self.target_names = ['AIDP', 'AMAN', 'AMSAN', 'MF']
         self.is_loaded = False
+        self.model_paths = {}
+    
+    def init_app(self, app):
+        """Initialize with Flask app context"""
+        self.model_paths = {
+            'model': app.config.get('MODEL_PATH', '../../../models/best_gbs_model.pkl'),
+            'scaler': app.config.get('SCALER_PATH', '../../../models/scaler.pkl'),
+            'label_encoders': app.config.get('LABEL_ENCODERS_PATH', '../../../models/label_encoders.pkl'),
+            'target_encoder': app.config.get('TARGET_ENCODER_PATH', '../../../models/target_encoder.pkl'),
+            'preprocessing_info': app.config.get('PREPROCESSING_INFO_PATH', '../../../models/preprocessing_info.json')
+        }
         self.load_model()
     
     def load_model(self):
@@ -23,23 +34,40 @@ class MLService:
         try:
             logger.info("Loading ML model and preprocessors...")
             
+            # Convert relative paths to absolute paths
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            
+            model_path = os.path.join(base_dir, self.model_paths['model'])
+            scaler_path = os.path.join(base_dir, self.model_paths['scaler'])
+            label_encoders_path = os.path.join(base_dir, self.model_paths['label_encoders'])
+            target_encoder_path = os.path.join(base_dir, self.model_paths['target_encoder'])
+            preprocessing_info_path = os.path.join(base_dir, self.model_paths['preprocessing_info'])
+            
             # Check if model files exist
-            if not all([
-                current_app.config['MODEL_PATH'],
-                current_app.config['SCALER_PATH'],
-                current_app.config['LABEL_ENCODERS_PATH'],
-                current_app.config['TARGET_ENCODER_PATH'],
-                current_app.config['PREPROCESSING_INFO_PATH']
-            ]):
-                logger.error("One or more model files are missing")
+            missing_files = []
+            for path_name, path in [
+                ('model', model_path),
+                ('scaler', scaler_path),
+                ('label_encoders', label_encoders_path),
+                ('target_encoder', target_encoder_path),
+                ('preprocessing_info', preprocessing_info_path)
+            ]:
+                if not os.path.exists(path):
+                    missing_files.append(path_name)
+                    logger.warning(f"Missing model file: {path}")
+            
+            if missing_files:
+                logger.error(f"Missing model files: {missing_files}")
+                logger.info("Please run: python src/train_models.py from the project root")
                 return
             
-            self.model = joblib.load(current_app.config['MODEL_PATH'])
-            self.scaler = joblib.load(current_app.config['SCALER_PATH'])
-            self.label_encoders = joblib.load(current_app.config['LABEL_ENCODERS_PATH'])
-            self.target_encoder = joblib.load(current_app.config['TARGET_ENCODER_PATH'])
+            # Load the models
+            self.model = joblib.load(model_path)
+            self.scaler = joblib.load(scaler_path)
+            self.label_encoders = joblib.load(label_encoders_path)
+            self.target_encoder = joblib.load(target_encoder_path)
             
-            with open(current_app.config['PREPROCESSING_INFO_PATH'], 'r') as f:
+            with open(preprocessing_info_path, 'r') as f:
                 preprocessing_info = json.load(f)
             
             self.feature_names = preprocessing_info['feature_columns']
@@ -101,7 +129,12 @@ class MLService:
             processed_data = default_values.copy()
             for frontend_key, backend_key in field_mapping.items():
                 if frontend_key in input_data and input_data[frontend_key] not in [None, '']:
-                    processed_data[backend_key] = input_data[frontend_key]
+                    # Convert checkbox values to integers
+                    if frontend_key in ['muscleWeakness', 'paralysis', 'sensoryLoss', 'reflexLoss', 
+                                      'respiratoryInvolvement', 'cranialNerveInvolvement', 'conductionBlock']:
+                        processed_data[backend_key] = 1 if input_data[frontend_key] else 0
+                    else:
+                        processed_data[backend_key] = input_data[frontend_key]
             
             # Create DataFrame
             df = pd.DataFrame([processed_data])
@@ -243,6 +276,37 @@ class MLService:
             'confidence_level': confidence_level,
             'recommendation': 'Consult neurologist for comprehensive evaluation and treatment planning.'
         }
+
+    def validate_input_data(self, data, required_fields=None):
+        """Validate input data for prediction"""
+        if required_fields is None:
+            required_fields = ['age', 'gender', 'csfProtein']
+        
+        errors = []
+        
+        # Check required fields
+        for field in required_fields:
+            if field not in data or data[field] in [None, '']:
+                errors.append(f"Missing required field: {field}")
+        
+        # Validate data types and ranges
+        if 'age' in data and data['age']:
+            try:
+                age = int(data['age'])
+                if not (1 <= age <= 120):
+                    errors.append("Age must be between 1 and 120")
+            except ValueError:
+                errors.append("Age must be a valid number")
+        
+        if 'csfProtein' in data and data['csfProtein']:
+            try:
+                csf = float(data['csfProtein'])
+                if csf < 0 or csf > 1000:
+                    errors.append("CSF protein must be between 0 and 1000 mg/dL")
+            except ValueError:
+                errors.append("CSF protein must be a valid number")
+        
+        return errors
 
 # Global ML service instance
 ml_service = MLService()
