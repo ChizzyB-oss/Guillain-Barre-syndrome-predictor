@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from app import create_app
-from models.database import db
+from src.models.database import db
 
 def reset_database():
     """Reset the database completely"""
@@ -20,7 +20,7 @@ def reset_database():
         print("✅ Database tables created successfully!")
         
         # Create default users
-        from models.database import User
+        from src.models.database import User
         
         # Create admin user
         admin_user = User(
