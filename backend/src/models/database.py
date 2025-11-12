@@ -2,8 +2,6 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Column, Integer, String, Boolean, Float, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
-import hashlib
-import secrets
 from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
@@ -20,7 +18,6 @@ class User(db.Model):
     role = Column(String(20), default='clinician')  # clinician, researcher, admin
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     predictions = relationship('Prediction', backref='user', lazy='dynamic')
@@ -107,6 +104,8 @@ def init_db(app):
     db.init_app(app)
     
     with app.app_context():
+        # Drop all existing tables and recreate (for development)
+        db.drop_all()
         db.create_all()
         print("✅ Database tables created successfully")
         
@@ -121,5 +120,16 @@ def init_db(app):
             )
             admin_user.set_password('admin123')
             db.session.add(admin_user)
+            
+            # Create test clinician user
+            clinician_user = User(
+                username='doctor1',
+                email='doctor1@hospital.com',
+                full_name='Dr. Sarah Johnson',
+                role='clinician'
+            )
+            clinician_user.set_password('password123')
+            db.session.add(clinician_user)
+            
             db.session.commit()
-            print("✅ Default admin user created")
+            print("✅ Default users created (admin/admin123, doctor1/password123)")

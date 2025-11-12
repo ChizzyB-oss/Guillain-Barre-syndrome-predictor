@@ -6,6 +6,8 @@ from services.ml_services import ml_service
 import json
 import uuid
 from datetime import datetime
+from flask import Blueprint, request, jsonify, current_app
+from utils.security import token_required
 
 predictions_bp = Blueprint('predictions', __name__)
 
@@ -18,6 +20,9 @@ def predict():
         
         if not data:
             return jsonify({'error': 'No input data provided'}), 400
+        
+         # Use current_app to access ml_service
+        ml_service = current_app.ml_service
         
         # Validate input data
         validation_errors = ml_service.validate_input_data(data)

@@ -1,10 +1,11 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 from config.config import config
-from models.database import init_db
+from models.database import init_db, db
 from utils.logging import setup_logging
 from routes.auth import auth_bp
 from routes.predictions import predictions_bp
+from services.ml_services import ml_service
 import os
 
 def create_app(config_name=None):
@@ -21,12 +22,18 @@ def create_app(config_name=None):
     # Setup logging
     setup_logging(app)
     
+    # Initialize ML service with app context
+    ml_service.init_app(app)
+    
     # Initialize database
     init_db(app)
     
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(predictions_bp, url_prefix='/api')
+    
+    # Make ML service available to app
+    app.ml_service = ml_service
     
     # Root endpoint
     @app.route('/')
@@ -35,7 +42,27 @@ def create_app(config_name=None):
             'message': 'GBS AI Diagnostic System API',
             'version': '1.0.0',
             'status': 'operational',
-            'documentation': '/api/docs'  # You can add Swagger later
+            'model_loaded': ml_service.is_loaded,
+            'endpoints': {
+                '/api/auth/register': 'POST - User registration',
+                '/api/auth/login': 'POST - User login',
+                '/api/predict': 'POST - Make prediction',
+                '/api/predictions/history': 'GET - Prediction history'
+            }
+        })
+    
+    # Health check endpoint
+    @app.route('/health')
+    def health():
+        return jsonify({
+            'status': 'healthy',
+            'timestamp': datetime.utcnow().isoformat(),
+            'version': '1.0.0',
+            'services': {
+                'database': 'operational',
+                'ml_model': 'loaded' if ml_service.is_loaded else 'unavailable',
+                'authentication': 'operational'
+            }
         })
     
     # Error handlers
@@ -55,6 +82,8 @@ def create_app(config_name=None):
     return app
 
 if __name__ == '__main__':
+    from datetime import datetime
+    
     app = create_app()
     
     print("=" * 60)
@@ -63,10 +92,14 @@ if __name__ == '__main__':
     print(f"📝 Environment: {os.environ.get('FLASK_ENV', 'development')}")
     print(f"🔐 Security: JWT Authentication Enabled")
     print(f"📊 Database: SQLAlchemy ORM")
-    print(f"🤖 ML Service: {'Loaded' if app.ml_service.is_loaded else 'Unavailable'}")
+    print(f"🤖 ML Service: {'✅ Loaded' if ml_service.is_loaded else '❌ Unavailable'}")
     print(f"🌐 CORS: Enabled for {app.config['ALLOWED_ORIGINS']}")
     print(f"📈 Logging: Comprehensive logging enabled")
     print("=" * 60)
+    
+    if not ml_service.is_loaded:
+        print("⚠️  WARNING: ML model not loaded. Predictions will fail!")
+        print("💡 Run this from project root: python src/train_models.py")
     
     app.run(
         host='0.0.0.0',
