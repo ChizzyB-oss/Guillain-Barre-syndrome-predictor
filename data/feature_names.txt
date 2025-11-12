@@ -1,0 +1,15 @@
+autonomic_dysfunction
+csf_protein
+csf_cell_count
+motor_velocity
+sensory_velocity
+amplitude
+f_wave_latency
+conduction_block
+recent_vaccination
+hospital_stay_days
+mechanical_ventilation
+treatment_response
+symptom_severity
+velocity_ratio
+csf_category

@@ -1,0 +1,46 @@
+{
+  "feature_columns": [
+    "age",
+    "gender",
+    "csf_protein",
+    "muscle_weakness",
+    "paralysis",
+    "sensory_loss",
+    "reflex_loss",
+    "respiratory_involvement",
+    "cranial_nerve_involvement",
+    "motor_velocity",
+    "sensory_velocity",
+    "amplitude",
+    "f_wave_latency",
+    "conduction_block",
+    "previous_infection",
+    "onset_speed"
+  ],
+  "categorical_columns": [
+    "gender",
+    "previous_infection",
+    "onset_speed"
+  ],
+  "numerical_columns": [
+    "age",
+    "csf_protein",
+    "muscle_weakness",
+    "paralysis",
+    "sensory_loss",
+    "reflex_loss",
+    "respiratory_involvement",
+    "cranial_nerve_involvement",
+    "motor_velocity",
+    "sensory_velocity",
+    "amplitude",
+    "f_wave_latency",
+    "conduction_block"
+  ],
+  "target_names": [
+    "AIDP",
+    "AMAN",
+    "AMSAN",
+    "MF"
+  ]
+}
