@@ -1,8 +1,8 @@
 import os
 from datetime import timedelta
-from dotenv import load_dotenv
 
-load_dotenv()  # Load environment variables from .env file
+# Get the absolute path to the project root (gbs-ml-project)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
 
 class Config:
     """Base configuration with default settings"""
@@ -12,7 +12,7 @@ class Config:
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'jwt-secret-key-change-in-production'
     
     # Database
-    DATABASE_PATH = os.path.join(os.path.dirname(__file__), '../../../data/gbs_system.db')
+    DATABASE_PATH = os.path.join(PROJECT_ROOT, 'data', 'gbs_system.db')
     SQLALCHEMY_DATABASE_URI = f'sqlite:///{DATABASE_PATH}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
@@ -33,16 +33,16 @@ class Config:
     # File Upload
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     
-    # ML Model Paths
-    MODEL_PATH = os.path.join(os.path.dirname(__file__), '../../../models/best_gbs_model.pkl')
-    SCALER_PATH = os.path.join(os.path.dirname(__file__), '../../../models/scaler.pkl')
-    LABEL_ENCODERS_PATH = os.path.join(os.path.dirname(__file__), '../../../models/label_encoders.pkl')
-    TARGET_ENCODER_PATH = os.path.join(os.path.dirname(__file__), '../../../models/target_encoder.pkl')
-    PREPROCESSING_INFO_PATH = os.path.join(os.path.dirname(__file__), '../../../models/preprocessing_info.json')
+    # ML Model Paths - using absolute paths
+    MODEL_PATH = os.path.join(PROJECT_ROOT, 'models', 'best_gbs_model.pkl')
+    SCALER_PATH = os.path.join(PROJECT_ROOT, 'models', 'scaler.pkl')
+    LABEL_ENCODERS_PATH = os.path.join(PROJECT_ROOT, 'models', 'label_encoders.pkl')
+    TARGET_ENCODER_PATH = os.path.join(PROJECT_ROOT, 'models', 'target_encoder.pkl')
+    PREPROCESSING_INFO_PATH = os.path.join(PROJECT_ROOT, 'models', 'preprocessing_info.json')
     
     # Logging
     LOG_LEVEL = 'INFO'
-    LOG_FILE = 'logs/gbs_system.log'
+    LOG_FILE = os.path.join(PROJECT_ROOT, 'logs', 'gbs_system.log')
 
 class DevelopmentConfig(Config):
     DEBUG = True
