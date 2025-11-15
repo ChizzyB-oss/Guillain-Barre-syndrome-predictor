@@ -1,103 +1,77 @@
 from flask import Blueprint, request, jsonify
-from werkzeug.security import generate_password_hash
-from models import db
-from utils.auth_utils import generate_token
+from werkzeug.security import generate_password_hash, check_password_hash
+import jwt
+from datetime import datetime, timedelta
 
-auth_routes = Blueprint('auth_routes', __name__)
+from models import db, User
 
-@auth_routes.route('/register', methods=['POST'])
-def register():
-    data = request.get_json()
+auth_bp = Blueprint("auth_bp", __name__)
 
-    required_fields = ['username', 'email', 'password', 'full_name', 'role']
-    if not all(field in data for field in required_fields):
-        return jsonify({"success": False, "error": "Missing fields"}), 400
+JWT_SECRET = "super-secret-key-change-this"
+JWT_ALGO = "HS256"
+TOKEN_EXP_DAYS = 7
 
-    # Check if user already exists
-    existing_user = db.get_user_by_username(data['username'])
-    if existing_user:
-        return jsonify({"success": False, "error": "Username already exists"}), 409
 
-    # Hash password
-    hashed_password = generate_password_hash(data['password'])
-
-    # Create user object
-    user = {
-        "username": data["username"],
-        "email": data["email"],
-        "password_hash": hashed_password,
-        "full_name": data["full_name"],
-        "role": data["role"]
+def generate_token(user):
+    payload = {
+        "user_id": user.id,
+        "exp": datetime.utcnow() + timedelta(days=TOKEN_EXP_DAYS),
+        "iat": datetime.utcnow(),
     }
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
+    return token if isinstance(token, str) else token.decode("utf-8")
 
-    # Save to DB
-    success = db.add_user(user)
 
-    if not success:
-        return jsonify({"success": False, "error": "Database error"}), 500
+@auth_bp.route("/api/register", methods=["POST"])
+def register():
+    data = request.get_json() or {}
 
-    # Generate session token
-    token = generate_token({"username": data["username"], "role": data["role"]})
+    username = data.get("username")
+    email = data.get("email")
+    password = data.get("password")
+
+    if not username or not email or not password:
+        return jsonify({"error": "username, email, and password are required"}), 400
+
+    if User.query.filter((User.username == username) |
+                         (User.email == email)).first():
+        return jsonify({"error": "User already exists"}), 400
+
+    user = User(
+        username=username,
+        email=email,
+        password_hash=generate_password_hash(password)
+    )
+
+    db.session.add(user)
+    db.session.commit()
+
+    token = generate_token(user)
 
     return jsonify({
         "success": True,
-        "message": "Registration successful",
-        "session_token": token,
-        "user": {
-            "username": data["username"],
-            "full_name": data["full_name"],
-            "email": data["email"],
-            "role": data["role"]
-        }
-    }), 201
-
-
-@auth_routes.route('/login', methods=['POST'])
-def login():
-    data = request.get_json()
-
-    if not data or 'username' not in data or 'password' not in data:
-        return jsonify({"success": False, "error": "Missing username or password"}), 400
-
-    username = data['username']
-    password = data['password']
-
-    # Fetch user from DB
-    user_row = db.get_user_by_username(username)
-
-    if not user_row:
-        return jsonify({"success": False, "error": "Invalid username or password"}), 401
-
-    # Convert DB row → dictionary
-    user = {
-        "id": user_row[0],
-        "username": user_row[1],
-        "email": user_row[2],
-        "password_hash": user_row[3],
-        "full_name": user_row[4],
-        "role": user_row[5],
-        "created_at": user_row[6]
-    }
-
-    # Check password
-    if not check_password_hash(user["password_hash"], password):
-        return jsonify({"success": False, "error": "Invalid username or password"}), 401
-
-    # Create JWT session token
-    token = generate_token({
-        "id": user["id"],
-        "username": user["username"],
-        "role": user["role"]
+        "message": "User registered",
+        "token": token,
+        "user": {"id": user.id, "username": user.username, "email": user.email}
     })
 
+
+@auth_bp.route("/api/login", methods=["POST"])
+def login():
+    data = request.get_json() or {}
+    email = data.get("email")
+    password = data.get("password")
+
+    user = User.query.filter_by(email=email).first()
+
+    if not user or not check_password_hash(user.password_hash, password):
+        return jsonify({"error": "Invalid email or password"}), 400
+
+    token = generate_token(user)
+
     return jsonify({
         "success": True,
-        "session_token": token,
-        "user": {
-            "id": user["id"],
-            "username": user["username"],
-            "email": user["email"],
-            "full_name": user["full_name"],
-            "role": user["role"]
-        }
-    }), 200
+        "message": "Login successful",
+        "token": token,
+        "user": {"id": user.id, "username": user.username, "email": user.email}
+    })

@@ -1,90 +1,83 @@
-# prediction_routes.py
-
 from flask import Blueprint, request, jsonify
-from datetime import datetime
 import json
 
 from models import db, Prediction
-from auth_routes import token_required
-from utils.preprocessing_utils import (
-    model, scaler, label_encoders, selector, target_encoder, preprocess_input
-)
+from auth_routes import generate_token  # reuses token method
+from utils.preprocessing_utils import model, target_encoder, preprocess_input
+from auth_routes import JWT_SECRET, JWT_ALGO
+
+import jwt
+from functools import wraps
 
 prediction_bp = Blueprint("prediction_bp", __name__)
 
 
-# ------------------ POST /api/predict ------------------
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.headers.get("Authorization", None)
+        if not auth or not auth.startswith("Bearer "):
+            return jsonify({"error": "Token missing"}), 401
+
+        token = auth.split(" ")[1]
+
+        try:
+            data = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+            from models import User
+            request.user = User.query.get(data["user_id"])
+        except Exception:
+            return jsonify({"error": "Invalid or expired token"}), 401
+
+        return f(*args, **kwargs)
+    return decorated
+
 
 @prediction_bp.route("/api/predict", methods=["POST"])
 @token_required
 def predict():
-    try:
-        data = request.get_json() or {}
+    data = request.get_json() or {}
+    X = preprocess_input(data)
 
-        # Prepare ML input
-        X = preprocess_input(data)
+    y_pred = model.predict(X)
+    subtype = target_encoder.inverse_transform(y_pred)[0]
 
-        # Predict subtype
-        y_pred = model.predict(X)
-        subtype = target_encoder.inverse_transform(y_pred)[0]
+    confidence = None
+    if hasattr(model, "predict_proba"):
+        proba = model.predict_proba(X)[0]
+        class_index = list(model.classes_).index(y_pred[0])
+        confidence = float(proba[class_index])
 
-        # Probability distribution
-        all_probabilities = {}
-        confidence = None
+    pred = Prediction(
+        user_id=request.user.id,
+        input_data=json.dumps(data),
+        predicted_subtype=subtype,
+        confidence=confidence,
+    )
+    db.session.add(pred)
+    db.session.commit()
 
-        if hasattr(model, "predict_proba"):
-            proba = model.predict_proba(X)[0]
-            class_labels = target_encoder.inverse_transform(model.classes_)
+    return jsonify({
+        "success": True,
+        "predicted_subtype": subtype,
+        "confidence": confidence,
+        "prediction_id": pred.id,
+        "created_at": pred.created_at.isoformat(),
+    })
 
-            for label, p in zip(class_labels, proba):
-                all_probabilities[label] = float(p)
-
-            confidence = float(all_probabilities[subtype])
-
-        # Save prediction to DB
-        pred_record = Prediction(
-            user_id=request.user.id,
-            input_data=json.dumps(data),
-            predicted_subtype=subtype,
-            confidence=confidence,
-            all_probabilities=json.dumps(all_probabilities),
-        )
-        db.session.add(pred_record)
-        db.session.commit()
-
-        return jsonify({
-            "success": True,
-            "predicted_subtype": subtype,
-            "confidence": confidence,
-            "all_probabilities": all_probabilities,
-            "prediction_id": pred_record.id,
-            "created_at": pred_record.created_at.isoformat()
-        }), 200
-
-    except Exception as e:
-        print("Prediction error:", str(e))
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-# ------------------ GET /api/predictions/history ------------------
 
 @prediction_bp.route("/api/predictions/history", methods=["GET"])
 @token_required
-def history():
-    preds = (Prediction.query
-             .filter_by(user_id=request.user.id)
-             .order_by(Prediction.created_at.desc())
-             .all())
+def get_history():
+    preds = Prediction.query.filter_by(user_id=request.user.id).all()
 
-    results = []
+    result = []
     for p in preds:
-        results.append({
+        result.append({
             "id": p.id,
             "input_data": json.loads(p.input_data),
             "predicted_subtype": p.predicted_subtype,
             "confidence": p.confidence,
-            "all_probabilities": json.loads(p.all_probabilities),
-            "created_at": p.created_at.isoformat()
+            "created_at": p.created_at.isoformat(),
         })
 
-    return jsonify({"success": True, "predictions": results}), 200
+    return jsonify({"success": True, "predictions": result})
