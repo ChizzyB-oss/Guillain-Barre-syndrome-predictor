@@ -15,7 +15,7 @@ from models import db, User, Prediction
 
 MODELS_DIR = "models"
 DATABASE_URL = "sqlite:///gbs_system.db"
-JWT_SECRET = "super-secret-key-change-this"  # for demo; change for real project
+JWT_SECRET = "super-secret-key-change-this" 
 JWT_ALGO = "HS256"
 TOKEN_EXP_DAYS = 7
 
@@ -62,7 +62,7 @@ def generate_token(user):
         "iat": datetime.utcnow()
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
-    # PyJWT returns str in newer versions, bytes in older; normalise:
+    
     if isinstance(token, bytes):
         token = token.decode("utf-8")
     return token
