@@ -9,10 +9,10 @@ def load_artifacts():
     model = joblib.load(os.path.join(MODELS_DIR, "best_gbs_model.pkl"))
     scaler = joblib.load(os.path.join(MODELS_DIR, "scaler.pkl"))
     label_encoders = joblib.load(os.path.join(MODELS_DIR, "label_encoders.pkl"))
-    selector = joblib.load(os.path.join(MODELS_DIR, "feature_selector.pkl"))
+    selector = joblib.load(os.path.join(MODELS_DIR, "selector.pkl"))
     target_encoder = joblib.load(os.path.join(MODELS_DIR, "target_encoder.pkl"))
 
-    with open(os.path.join(MODELS_DIR, "feature_names.txt"), "r") as f:
+    with open(os.path.join(MODELS_DIR, "feature_columns.txt"), "r") as f:
         feature_columns = [line.strip() for line in f.readlines()]
 
     return model, scaler, label_encoders, selector, target_encoder, feature_columns

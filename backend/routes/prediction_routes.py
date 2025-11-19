@@ -1,13 +1,13 @@
 from flask import Blueprint, request, jsonify
 import json
+from functools import wraps
+import jwt
 
 from models import db, Prediction
-from auth_routes import generate_token  # reuses token method
+from routes.auth_routes import JWT_SECRET, JWT_ALGO
 from utils.preprocessing_utils import model, target_encoder, preprocess_input
-from auth_routes import JWT_SECRET, JWT_ALGO
+from models import User
 
-import jwt
-from functools import wraps
 
 prediction_bp = Blueprint("prediction_bp", __name__)
 

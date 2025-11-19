@@ -49,29 +49,45 @@ def register():
     token = generate_token(user)
 
     return jsonify({
-        "success": True,
-        "message": "User registered",
-        "token": token,
-        "user": {"id": user.id, "username": user.username, "email": user.email}
-    })
+    "success": True,
+    "message": "Login successful",
+    "session_token": token,
+    "user": {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "full_name": user.full_name if hasattr(user, "full_name") else "User",
+        "role": user.role if hasattr(user, "role") else "clinician"
+    }
+})
 
 
 @auth_bp.route("/api/login", methods=["POST"])
 def login():
     data = request.get_json() or {}
-    email = data.get("email")
+    username = data.get("username")
     password = data.get("password")
 
-    user = User.query.filter_by(email=email).first()
+    if not username or not password:
+        return jsonify({"error": "username and password are required"}), 400
 
+    # find user by username
+    user = User.query.filter_by(username=username).first()
     if not user or not check_password_hash(user.password_hash, password):
-        return jsonify({"error": "Invalid email or password"}), 400
+        return jsonify({"error": "Invalid username or password"}), 401
 
     token = generate_token(user)
 
     return jsonify({
-        "success": True,
-        "message": "Login successful",
-        "token": token,
-        "user": {"id": user.id, "username": user.username, "email": user.email}
-    })
+    "success": True,
+    "message": "Login successful",
+    "session_token": token,
+    "user": {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "full_name": user.full_name if hasattr(user, "full_name") else "User",
+        "role": user.role if hasattr(user, "role") else "clinician"
+    }
+}), 200
+
