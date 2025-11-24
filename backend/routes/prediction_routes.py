@@ -2,6 +2,8 @@ from flask import Blueprint, request, jsonify
 import json
 from functools import wraps
 import jwt
+import shap
+import numpy as np
 
 from models import db, Prediction
 from routes.auth_routes import JWT_SECRET, JWT_ALGO
@@ -65,6 +67,17 @@ def predict():
                 for i, prob in enumerate(proba)
             }
 
+        # Compute SHAP values
+        explainer = shap.Explainer(model)
+        shap_values = explainer(X)
+
+        # Extract the feature importance for this prediction
+        shap_dict = {
+           feature_columns[i]: float(shap_values.values[0][i])
+              for i in range(len(feature_columns))
+            }
+    
+
         # ---- Save prediction in DB ----
         pred = Prediction(
             user_id=request.user.id,
@@ -83,7 +96,8 @@ def predict():
             "confidence": confidence,
             "all_probabilities": all_probabilities,
             "prediction_id": pred.id,
-            "created_at": pred.created_at.isoformat()
+            "created_at": pred.created_at.isoformat(),
+            "explainability": shap_dict
         }), 200
 
     except Exception as e:
