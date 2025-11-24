@@ -6,7 +6,7 @@ import io
 import json
 from datetime import datetime
 from models import Prediction
-from routes.auth_routes import token_required
+from utils.auth_utils import token_required
 
 report_bp = Blueprint("report_bp", __name__)
 
