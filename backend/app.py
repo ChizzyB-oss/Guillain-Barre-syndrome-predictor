@@ -4,6 +4,7 @@ from models import db
 
 from routes.auth_routes import auth_bp
 from routes.prediction_routes import prediction_bp
+from routes.profile_routes import profile_bp
 
 
 app = Flask(__name__)
@@ -23,6 +24,7 @@ with app.app_context():
 # Register blueprints
 app.register_blueprint(auth_bp)
 app.register_blueprint(prediction_bp)
+app.register_blueprint(profile_bp)
 
 
 @app.route("/api/health")
