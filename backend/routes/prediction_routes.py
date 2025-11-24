@@ -35,34 +35,63 @@ def token_required(f):
 @prediction_bp.route("/api/predict", methods=["POST"])
 @token_required
 def predict():
-    data = request.get_json() or {}
-    X = preprocess_input(data)
+    try:
+        data = request.get_json() or {}
 
-    y_pred = model.predict(X)
-    subtype = target_encoder.inverse_transform(y_pred)[0]
+        if not data:
+            return jsonify({"error": "No input data provided"}), 400
 
-    confidence = None
-    if hasattr(model, "predict_proba"):
-        proba = model.predict_proba(X)[0]
-        class_index = list(model.classes_).index(y_pred[0])
-        confidence = float(proba[class_index])
+        # ---- Preprocess input ----
+        X = preprocess_input(data)
 
-    pred = Prediction(
-        user_id=request.user.id,
-        input_data=json.dumps(data),
-        predicted_subtype=subtype,
-        confidence=confidence,
-    )
-    db.session.add(pred)
-    db.session.commit()
+        # ---- Predict ----
+        y_pred = model.predict(X)
+        subtype = target_encoder.inverse_transform(y_pred)[0]
 
-    return jsonify({
-        "success": True,
-        "predicted_subtype": subtype,
-        "confidence": confidence,
-        "prediction_id": pred.id,
-        "created_at": pred.created_at.isoformat(),
-    })
+        # ---- Confidence ----
+        confidence = None
+        all_probabilities = {}
+
+        if hasattr(model, "predict_proba"):
+            proba = model.predict_proba(X)[0]   # array of probabilities
+            class_labels = target_encoder.inverse_transform(model.classes_)
+
+            # Predicted class probability
+            confidence = float(proba[list(model.classes_).index(y_pred[0])])
+
+            # Full probability mapping
+            all_probabilities = {
+                class_labels[i]: float(prob)
+                for i, prob in enumerate(proba)
+            }
+
+        # ---- Save prediction in DB ----
+        pred = Prediction(
+            user_id=request.user.id,
+            input_data=json.dumps(data),
+            predicted_subtype=subtype,
+            confidence=confidence,
+        )
+
+        db.session.add(pred)
+        db.session.commit()
+
+        # ---- Return full response ----
+        return jsonify({
+            "success": True,
+            "predicted_subtype": subtype,
+            "confidence": confidence,
+            "all_probabilities": all_probabilities,
+            "prediction_id": pred.id,
+            "created_at": pred.created_at.isoformat()
+        }), 200
+
+    except Exception as e:
+        print("❌ Prediction error:", str(e))
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 
 @prediction_bp.route("/api/predictions/history", methods=["GET"])
