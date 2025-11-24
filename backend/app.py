@@ -6,6 +6,7 @@ from routes.auth_routes import auth_bp
 from routes.prediction_routes import prediction_bp
 from routes.profile_routes import profile_bp
 from routes.report_routes import report_bp
+from routes.admin_routes import admin_bp
 
 
 app = Flask(__name__)
@@ -27,6 +28,7 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(prediction_bp)
 app.register_blueprint(profile_bp)
 app.register_blueprint(report_bp)
+app.register_blueprint(admin_bp)
 
 
 @app.route("/api/health")
