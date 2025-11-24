@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from werkzeug.security import check_password_hash, generate_password_hash
 from models import db, User
-from utils.auth_utils import token_required
+from utils.auth_middleware import token_required
 
 profile_bp = Blueprint("profile_bp", __name__)
 

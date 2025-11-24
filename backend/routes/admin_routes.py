@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from models import db, User, Prediction
-from utils.auth_utils import token_required
+from utils.auth_middleware import token_required
 
 
 admin_bp = Blueprint("admin", __name__)
