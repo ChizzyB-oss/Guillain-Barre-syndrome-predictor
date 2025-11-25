@@ -24,20 +24,26 @@ model, scaler, label_encoders, selector, target_encoder, feature_columns = load_
 def preprocess_input(data):
     df = pd.DataFrame([data])
 
+    # Add missing columns
     for col in feature_columns:
         if col not in df.columns:
             df[col] = 0
 
+    # Keep columns in same order
     df = df[feature_columns]
 
+    # Apply label encoders
     for col, enc in label_encoders.items():
         if col in df.columns:
             df[col] = df[col].astype(str).map(lambda x: x if x in enc.classes_ else enc.classes_[0])
             df[col] = enc.transform(df[col])
 
+    # Scale numerical columns
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     df[numeric_cols] = scaler.transform(df[numeric_cols])
 
-    X_selected = selector.transform(df)
+    # ❌ DO NOT USE selector.transform()
+    # return selector.transform(df)
 
-    return X_selected
+    # ✔ Return DataFrame with original feature names
+    return df
